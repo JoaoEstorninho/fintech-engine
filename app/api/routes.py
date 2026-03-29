@@ -32,7 +32,6 @@ def create_payment(
         logger.warning("Missing Idempotency-Key header")
         raise HTTPException(status_code=400, detail="Missing Idempotency-Key")
 
-    # ✅ Check Redis
     cached = redis_client.get(idempotency_key)
 
     if cached:
@@ -46,7 +45,6 @@ def create_payment(
             "result": json.loads(cached)
         }
 
-    # Create payment
     payment_obj = service.create_payment(payment.amount, payment.currency)
 
     logger.info(
@@ -57,7 +55,6 @@ def create_payment(
         }
     )
 
-    # ✅ Send to Celery
     process_payment_task.delay(payment_obj["id"])
 
     logger.info(
@@ -65,7 +62,6 @@ def create_payment(
         extra={"payment_id": payment_obj["id"]}
     )
 
-    # Store idempotency key
     redis_client.set(
         idempotency_key,
         json.dumps(payment_obj),
