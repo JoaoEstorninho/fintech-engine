@@ -1,7 +1,8 @@
 import uuid
 import logging
+import json
 
-from app.providers import stripe, adyen
+from app.core.redis_client import redis_client
 from app.core.retry_policy import RetryPolicy
 from app.services.provider_router import ProviderRouter
 from app.core.circuit_breaker import CircuitBreaker
@@ -12,8 +13,6 @@ retry_policy = RetryPolicy(max_retries=3, base_delay=1)
 stripe_breaker = CircuitBreaker()
 adyen_breaker = CircuitBreaker()
 router = ProviderRouter()
-
-payments_db = {}
 
 
 class PaymentService:
@@ -30,25 +29,21 @@ class PaymentService:
             "retries": 0
         }
 
-        payments_db[payment_id] = payment
-
-        logger.info(
-            "Payment created",
-            extra={
-                "payment_id": payment_id,
-                "amount": amount,
-                "currency": currency
-            }
+        redis_client.set(
+            f"payment:{payment_id}",
+            json.dumps(payment)
         )
 
         return payment
 
     def process_payment(self, payment_id: str):
-        payment = payments_db.get(payment_id)
+        data = redis_client.get(f"payment:{payment_id}")
 
-        if not payment:
-            logger.error(f"Payment {payment_id} not found")
+        if not data:
+            logger.error(f"Payment {payment_id} not found in Redis")
             return
+
+        payment = json.loads(data)
 
         logger.info(f"Processing payment {payment_id}")
 
@@ -64,8 +59,11 @@ class PaymentService:
             payment["status"] = "success"
             payment["provider"] = name
 
-            logger.info(
-                f"Payment {payment_id} succeeded via {name}"
+            logger.info(f"Payment {payment_id} succeeded via {name}")
+
+            redis_client.set(
+                f"payment:{payment_id}",
+                json.dumps(payment)
             )
             return
 
@@ -92,6 +90,11 @@ class PaymentService:
                 logger.info(
                     f"Payment {payment_id} succeeded via fallback {fallback_name}"
                 )
+
+                redis_client.set(
+                    f"payment:{payment_id}",
+                    json.dumps(payment)
+                )
                 return
 
             logger.warning(
@@ -103,10 +106,15 @@ class PaymentService:
 
         logger.error(f"Payment {payment_id} failed after all attempts")
 
+        redis_client.set(
+            f"payment:{payment_id}",
+            json.dumps(payment)
+        )
+
     def get_payment(self, payment_id: str):
-        payment = payments_db.get(payment_id)
+        data = redis_client.get(f"payment:{payment_id}")
 
-        if not payment:
-            logger.warning(f"Payment {payment_id} not found")
+        if not data:
+            return None
 
-        return payment
+        return json.loads(data)
