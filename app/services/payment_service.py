@@ -3,21 +3,19 @@ import logging
 
 from app.core.retry_policy import RetryPolicy
 from app.services.provider_router import ProviderRouter
-from app.core.circuit_breaker import CircuitBreaker
-from app.core.db import SessionLocal
+from app.repositories.payment_repository import PaymentRepository
 from app.models.payment import Payment
 
 logger = logging.getLogger(__name__)
 
 retry_policy = RetryPolicy(max_retries=3, base_delay=1)
 router = ProviderRouter()
+repo = PaymentRepository()
 
 
 class PaymentService:
 
     def create_payment(self, amount: float, currency: str):
-        db = SessionLocal()
-
         payment = Payment(
             id=str(uuid.uuid4()),
             amount=amount,
@@ -27,10 +25,7 @@ class PaymentService:
             retries=0
         )
 
-        db.add(payment)
-        db.commit()
-        db.refresh(payment)
-        db.close()
+        payment = repo.create(payment)
 
         return {
             "id": payment.id,
@@ -42,13 +37,10 @@ class PaymentService:
         }
 
     def process_payment(self, payment_id: str):
-        db = SessionLocal()
-
-        payment = db.query(Payment).filter(Payment.id == payment_id).first()
+        payment = repo.get(payment_id)
 
         if not payment:
             logger.error(f"Payment {payment_id} not found in DB")
-            db.close()
             return
 
         logger.info(f"Processing payment {payment_id}")
@@ -67,8 +59,7 @@ class PaymentService:
 
             logger.info(f"Payment {payment_id} succeeded via {name}")
 
-            db.commit()
-            db.close()
+            repo.update(payment)
             return
 
         logger.warning(f"Provider {name} failed for payment {payment_id}")
@@ -95,8 +86,7 @@ class PaymentService:
                     f"Payment {payment_id} succeeded via fallback {fallback_name}"
                 )
 
-                db.commit()
-                db.close()
+                repo.update(payment)
                 return
 
             logger.warning(
@@ -108,14 +98,10 @@ class PaymentService:
 
         logger.error(f"Payment {payment_id} failed after all attempts")
 
-        db.commit()
-        db.close()
+        repo.update(payment)
 
     def get_payment(self, payment_id: str):
-        db = SessionLocal()
-
-        payment = db.query(Payment).filter(Payment.id == payment_id).first()
-        db.close()
+        payment = repo.get(payment_id)
 
         if not payment:
             return None
