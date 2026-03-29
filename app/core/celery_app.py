@@ -1,7 +1,7 @@
 from celery import Celery
 import os
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL")
 
 celery_app = Celery(
     "worker",
@@ -9,6 +9,4 @@ celery_app = Celery(
     backend=REDIS_URL
 )
 
-celery_app.conf.task_routes = {
-    "app.tasks.*": {"queue": "default"}
-}
+celery_app.autodiscover_tasks(["app.tasks"])
