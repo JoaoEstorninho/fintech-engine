@@ -1,6 +1,8 @@
 import logging
+import json
 from fastapi import APIRouter, Header, HTTPException, BackgroundTasks
 
+from app.core.redis_client import redis_client
 from app.models.schemas import PaymentRequest
 from app.services.payment_service import PaymentService
 
@@ -8,9 +10,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 service = PaymentService()
-
-# In-memory store (temporary)
-idempotency_store = {}
 
 
 @router.post("/payments")
@@ -33,7 +32,9 @@ def create_payment(
         logger.warning("Missing Idempotency-Key header")
         raise HTTPException(status_code=400, detail="Missing Idempotency-Key")
 
-    if idempotency_key in idempotency_store:
+    cached = redis_client.get(idempotency_key)
+
+    if cached:
         logger.info(
             "Returning cached response",
             extra={"idempotency_key": idempotency_key}
@@ -41,10 +42,9 @@ def create_payment(
 
         return {
             "cached": True,
-            "result": idempotency_store[idempotency_key]
+            "result": json.loads(cached)
         }
 
-    # Create payment
     payment_obj = service.create_payment(payment.amount, payment.currency)
 
     logger.info(
@@ -55,11 +55,13 @@ def create_payment(
         }
     )
 
-    # Background processing
     background_tasks.add_task(service.process_payment, payment_obj["id"])
 
-    # Store idempotency result
-    idempotency_store[idempotency_key] = payment_obj
+    redis_client.set(
+        idempotency_key,
+        json.dumps(payment_obj),
+        ex=3600 
+    )
 
     return {
         "cached": False,
