@@ -1,22 +1,23 @@
 from app.repositories.payment_repository import PaymentRepository
 from app.core.exceptions import NotFoundException
+from app.models.schemas import PaymentResponse
 
 repo = PaymentRepository()
 
 
 class GetPaymentService:
 
-    def execute(self, payment_id: str):
+    def execute(self, payment_id: str) -> PaymentResponse:
         payment = repo.get(payment_id)
 
         if not payment:
             raise NotFoundException("Payment not found")
 
-        return {
-            "id": payment.id,
-            "amount": payment.amount,
-            "currency": payment.currency,
-            "status": payment.status,
-            "provider": payment.provider,
-            "retries": payment.retries
-        }
+        return PaymentResponse(
+            id=payment.id,
+            amount=payment.amount,
+            currency=payment.currency,
+            status=payment.status,
+            provider=payment.provider,
+            retries=payment.retries
+        )

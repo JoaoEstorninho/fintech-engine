@@ -1,15 +1,17 @@
 from pydantic import BaseModel, Field
-from typing import Literal
+from typing import Literal, Optional
+from decimal import Decimal
 
 
 class PaymentRequest(BaseModel):
-    amount: float = Field(gt=0, description="Amount must be > 0")
+    amount: Decimal = Field(gt=0, description="Amount must be > 0")
     currency: Literal["EUR", "USD", "GBP"]
 
 
 class PaymentResponse(BaseModel):
     id: str
-    amount: float
+    amount: Decimal
     currency: str
-    status: str
-    provider: str | None = None
+    status: Literal["pending", "success", "failed"]
+    provider: Optional[str] = None
+    retries: int

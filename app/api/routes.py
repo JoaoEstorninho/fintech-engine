@@ -4,17 +4,18 @@ from fastapi import APIRouter, Header
 
 from app.tasks.payment_tasks import process_payment_task
 from app.core.redis_client import redis_client
-from app.models.schemas import PaymentRequest
 from app.services.use_cases.create_payment import CreatePaymentService
 from app.services.use_cases.get_payment import GetPaymentService
 from app.core.exceptions import ValidationException
+from app.models.schemas import PaymentRequest, PaymentResponse
+from app.models.responses import ApiResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
-@router.post("/payments")
+@router.post("/payments", response_model=ApiResponse[PaymentResponse])
 def create_payment(
     payment: PaymentRequest,
     idempotency_key: str = Header(None)
@@ -41,10 +42,10 @@ def create_payment(
             extra={"idempotency_key": idempotency_key}
         )
 
-        return {
-            "cached": True,
-            "result": json.loads(cached)
-        }
+        return ApiResponse[PaymentResponse](
+            success=True,
+            data=PaymentResponse(**json.loads(cached))
+        )
 
     create_service = CreatePaymentService()
     payment_obj = create_service.execute(payment.amount, payment.currency)
@@ -52,31 +53,31 @@ def create_payment(
     logger.info(
         "payment_created",
         extra={
-            "payment_id": payment_obj["id"],
+            "payment_id": payment_obj.id,
             "idempotency_key": idempotency_key
         }
     )
 
-    process_payment_task.delay(payment_obj["id"])
+    process_payment_task.delay(payment_obj.id)
 
     logger.info(
         "payment_task_dispatched",
-        extra={"payment_id": payment_obj["id"]}
+        extra={"payment_id": payment_obj.id}
     )
 
     redis_client.set(
         idempotency_key,
-        json.dumps(payment_obj),
+        json.dumps(payment_obj.dict()),
         ex=3600
     )
 
-    return {
-        "cached": False,
-        "result": payment_obj
-    }
+    return ApiResponse[PaymentResponse](
+        success=True,
+        data=payment_obj
+    )
 
 
-@router.get("/payments/{payment_id}")
+@router.get("/payments/{payment_id}", response_model=ApiResponse[PaymentResponse])
 def get_payment(payment_id: str):
 
     logger.info(
@@ -91,8 +92,11 @@ def get_payment(payment_id: str):
         "payment_retrieved",
         extra={
             "payment_id": payment_id,
-            "status": payment["status"]
+            "status": payment.status
         }
     )
 
-    return payment
+    return ApiResponse[PaymentResponse](
+        success=True,
+        data=payment
+    )

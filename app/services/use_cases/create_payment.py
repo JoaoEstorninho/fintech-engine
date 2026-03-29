@@ -2,6 +2,7 @@ import uuid
 from app.models.payment import Payment
 from app.repositories.payment_repository import PaymentRepository
 from app.core.exceptions import ValidationException
+from app.models.schemas import PaymentResponse
 
 repo = PaymentRepository()
 
@@ -37,12 +38,12 @@ class CreatePaymentService:
         if currency not in ALLOWED_CURRENCIES:
             raise ValidationException(f"Unsupported currency: {currency}")
 
-    def _to_response(self, payment):
-        return {
-            "id": payment.id,
-            "amount": payment.amount,
-            "currency": payment.currency,
-            "status": payment.status,
-            "provider": payment.provider,
-            "retries": payment.retries
-        }
+    def _to_response(self, payment) -> PaymentResponse:
+        return PaymentResponse(
+            id=payment.id,
+            amount=payment.amount,
+            currency=payment.currency,
+            status=payment.status,
+            provider=payment.provider,
+            retries=payment.retries
+        )

@@ -3,6 +3,7 @@ from app.core.retry_policy import RetryPolicy
 from app.services.provider_router import ProviderRouter
 from app.repositories.payment_repository import PaymentRepository
 from app.core.exceptions import NotFoundException, ExternalServiceException
+from app.models.payment import Payment
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,7 @@ repo = PaymentRepository()
 
 class ProcessPaymentService:
 
-    def execute(self, payment_id: str):
+    def execute(self, payment_id: str) -> None:
         payment = repo.get(payment_id)
 
         if not payment:
@@ -32,7 +33,7 @@ class ProcessPaymentService:
             extra={"payment_id": payment_id, "provider": name}
         )
 
-        if self._try_provider(payment, name, provider):
+        if self._try_provider(payment, payment_id, name, provider):
             repo.update(payment)
             return
 
@@ -45,7 +46,7 @@ class ProcessPaymentService:
                 extra={"payment_id": payment_id, "provider": fallback_name}
             )
 
-            if self._try_provider(payment, fallback_name, fallback_provider):
+            if self._try_provider(payment, payment_id, fallback_name, fallback_provider):
                 repo.update(payment)
                 return
 
@@ -59,7 +60,16 @@ class ProcessPaymentService:
 
         raise ExternalServiceException("All payment providers failed")
 
-    def _try_provider(self, payment, name, provider):
+    def _try_provider(
+        self,
+        payment: Payment,
+        payment_id: str,
+        name: str,
+        provider: dict
+    ) -> bool:
+
+        payment.retries += 1
+
         result = retry_policy.execute(provider["handler"], payment.amount)
 
         if result["status"] == "success":
@@ -71,8 +81,9 @@ class ProcessPaymentService:
             logger.info(
                 "payment_success",
                 extra={
-                    "payment_id": payment.id,
-                    "provider": name
+                    "payment_id": payment_id,
+                    "provider": name,
+                    "retries": payment.retries
                 }
             )
 
@@ -81,8 +92,9 @@ class ProcessPaymentService:
         logger.warning(
             "provider_failed",
             extra={
-                "payment_id": payment.id,
-                "provider": name
+                "payment_id": payment_id,
+                "provider": name,
+                "retries": payment.retries
             }
         )
 
