@@ -1,7 +1,8 @@
 import logging
 import json
-from fastapi import APIRouter, Header, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Header, HTTPException
 
+from app.tasks.payment_tasks import process_payment_task
 from app.core.redis_client import redis_client
 from app.models.schemas import PaymentRequest
 from app.services.payment_service import PaymentService
@@ -15,7 +16,6 @@ service = PaymentService()
 @router.post("/payments")
 def create_payment(
     payment: PaymentRequest,
-    background_tasks: BackgroundTasks,
     idempotency_key: str = Header(None)
 ):
 
@@ -32,6 +32,7 @@ def create_payment(
         logger.warning("Missing Idempotency-Key header")
         raise HTTPException(status_code=400, detail="Missing Idempotency-Key")
 
+    # ✅ Check Redis
     cached = redis_client.get(idempotency_key)
 
     if cached:
@@ -45,22 +46,30 @@ def create_payment(
             "result": json.loads(cached)
         }
 
+    # Create payment
     payment_obj = service.create_payment(payment.amount, payment.currency)
 
     logger.info(
-        "Payment created and scheduled for processing",
+        "Payment created",
         extra={
             "payment_id": payment_obj["id"],
             "idempotency_key": idempotency_key
         }
     )
 
-    background_tasks.add_task(service.process_payment, payment_obj["id"])
+    # ✅ Send to Celery
+    process_payment_task.delay(payment_obj["id"])
 
+    logger.info(
+        "Payment task dispatched to worker",
+        extra={"payment_id": payment_obj["id"]}
+    )
+
+    # Store idempotency key
     redis_client.set(
         idempotency_key,
         json.dumps(payment_obj),
-        ex=3600 
+        ex=3600
     )
 
     return {
