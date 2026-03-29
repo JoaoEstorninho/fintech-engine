@@ -52,7 +52,6 @@ class PaymentService:
 
         logger.info(f"Processing payment {payment_id}")
 
-        # 🔥 Select best provider
         name, provider = router.get_best_provider()
 
         logger.info(f"Selected provider: {name}")
@@ -73,7 +72,6 @@ class PaymentService:
         logger.warning(f"Provider {name} failed for payment {payment_id}")
         router.record_failure(name)
 
-        # 🔁 Fallback providers
         for fallback_name, fallback_provider in router.providers.items():
             if fallback_name == name:
                 continue

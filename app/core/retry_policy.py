@@ -38,7 +38,6 @@ class RetryPolicy:
             except Exception as e:
                 attempt += 1
 
-                # ❌ Final failure
                 if attempt >= self.max_retries:
                     logger.error(
                         "Max retries reached",
@@ -50,11 +49,9 @@ class RetryPolicy:
                     )
                     return {"status": "failed"}
 
-                # 🔥 Exponential backoff
                 delay = self.base_delay * (2 ** (attempt - 1))
                 delay = min(delay, self.max_delay)
 
-                # 🎲 Jitter
                 jitter_value = random.uniform(0, self.jitter)
                 total_delay = delay + jitter_value
 
