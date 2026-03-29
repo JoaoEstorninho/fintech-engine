@@ -67,7 +67,7 @@ def create_payment(
 
     redis_client.set(
         idempotency_key,
-        json.dumps(payment_obj.dict()),
+        json.dumps(payment_obj.model_dump(mode="json")),
         ex=3600
     )
 
