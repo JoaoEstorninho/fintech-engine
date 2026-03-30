@@ -4,9 +4,10 @@ from app.core.logging_config import setup_logging
 from app.core.db import Base, engine
 from app.core.exceptions import AppException, app_exception_handler
 
-app.add_exception_handler(AppException, app_exception_handler)
-Base.metadata.create_all(bind=engine)
+a
 
 setup_logging()
 app = FastAPI()
 app.include_router(router)
+pp.add_exception_handler(AppException, app_exception_handler)
+Base.metadata.create_all(bind=engine)
