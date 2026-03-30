@@ -3,6 +3,8 @@ import random
 import logging
 from typing import Callable, Any
 
+from app.core.exceptions import RetryableException, NonRetryableException
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,38 +30,42 @@ class RetryPolicy:
 
                 if result.get("status") == "success":
                     logger.info(
-                        "RetryPolicy success",
+                        "retry_success",
                         extra={"attempt": attempt + 1}
                     )
                     return result
 
-                raise Exception("Operation failed")
+                raise RetryableException("Operation failed")
 
-            except Exception as e:
+            except NonRetryableException:
+                logger.error(
+                    "non_retryable_error",
+                    extra={"function": func.__name__}
+                )
+                raise 
+
+            except RetryableException as e:
                 attempt += 1
 
                 if attempt >= self.max_retries:
                     logger.error(
-                        "Max retries reached",
+                        "retry_exhausted",
                         extra={
                             "attempts": attempt,
-                            "error": str(e),
                             "function": func.__name__,
+                            "error": str(e),
                         }
                     )
-                    return {"status": "failed"}
+                    raise 
 
-                delay = self.base_delay * (2 ** (attempt - 1))
-                delay = min(delay, self.max_delay)
-
+                delay = min(self.base_delay * (2 ** (attempt - 1)), self.max_delay)
                 jitter_value = random.uniform(0, self.jitter)
                 total_delay = delay + jitter_value
 
                 logger.warning(
-                    "Retrying operation",
+                    "retrying",
                     extra={
                         "attempt": attempt,
-                        "max_retries": self.max_retries,
                         "delay": round(total_delay, 2),
                         "function": func.__name__,
                         "error": str(e),

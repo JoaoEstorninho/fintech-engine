@@ -9,10 +9,21 @@ from app.services.use_cases.get_payment import GetPaymentService
 from app.core.exceptions import ValidationException
 from app.models.schemas import PaymentRequest, PaymentResponse
 from app.models.responses import ApiResponse
+from app.core.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+@router.get("/health")
+def health_check():
+    try:
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        return {"status": "ok"}
+    except Exception:
+        return {"status": "error"}
 
 
 @router.post("/payments", response_model=ApiResponse[PaymentResponse])

@@ -61,36 +61,35 @@ class ProcessPaymentService:
         raise ExternalServiceException("All payment providers failed")
 
     def _try_provider(
-        self,
-        payment: Payment,
-        payment_id: str,
-        name: str,
-        provider: dict
-    ) -> bool:
+    self,
+    payment: Payment,
+    payment_id: str,
+    name: str,
+    provider: dict
+) -> bool:
 
-        payment.retries += 1
+    breaker = provider["breaker"] 
 
+    if not breaker.can_execute():
+        logger.warning(
+            "provider_skipped_circuit_open",
+            extra={"payment_id": payment_id, "provider": name}
+        )
+        return False
+
+    payment.retries += 1
+
+    try:
         result = retry_policy.execute(provider["handler"], payment.amount)
 
-        if result["status"] == "success":
-            router.record_success(name)
+        breaker.record_success()
+        router.record_success(name)
 
-            payment.status = "success"
-            payment.provider = name
+        payment.status = "success"
+        payment.provider = name
 
-            logger.info(
-                "payment_success",
-                extra={
-                    "payment_id": payment_id,
-                    "provider": name,
-                    "retries": payment.retries
-                }
-            )
-
-            return True
-
-        logger.warning(
-            "provider_failed",
+        logger.info(
+            "payment_success",
             extra={
                 "payment_id": payment_id,
                 "provider": name,
@@ -98,5 +97,20 @@ class ProcessPaymentService:
             }
         )
 
+        return True
+
+    except Exception as e:
+        breaker.record_failure()
         router.record_failure(name)
+
+        logger.warning(
+            "provider_failed",
+            extra={
+                "payment_id": payment_id,
+                "provider": name,
+                "retries": payment.retries,
+                "error": str(e)
+            }
+        )
+
         return False

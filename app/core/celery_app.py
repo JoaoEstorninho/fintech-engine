@@ -1,11 +1,17 @@
 from celery import Celery
-import os
+from app.core.config import settings
 
-REDIS_URL = os.getenv("REDIS_URL")
+celery_app = Celery("worker")
 
-celery_app = Celery(
-    "worker",
-    broker=REDIS_URL,
-    backend=REDIS_URL,
-    include=["app.tasks.payment_tasks"]
-)
+if settings.ENV == "test":
+    celery_app.conf.update(
+        task_always_eager=True,
+        task_eager_propagates=True,
+        broker_url="memory://",
+        result_backend="cache+memory://",
+    )
+else:
+    celery_app.conf.update(
+        broker_url="redis://localhost:6379/0",
+        result_backend="redis://localhost:6379/0",
+    )
